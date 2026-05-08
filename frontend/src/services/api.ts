@@ -45,6 +45,9 @@ export const authApi = {
 /* Users */
 export const userApi = {
   me: () => api.get<User>("/users/me"),
+  updateProfile: (full_name: string) => api.patch<User>("/users/me", { full_name }),
+  changePassword: (current_password: string, new_password: string) =>
+    api.post("/users/me/password", { current_password, new_password }),
 };
 
 /* Accounts */
@@ -76,4 +79,16 @@ export const accountApi = {
     api.get<TransactionPage>(`/accounts/${id}/transactions`, {
       params: { page, page_size, transaction_type, date_from, date_to },
     }),
+
+  close: (id: number) => api.delete(`/accounts/${id}`),
+
+  statement: async (id: number, accountNumber: string) => {
+    const res = await api.get(`/accounts/${id}/statement`, { responseType: "blob" });
+    const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `statement_${accountNumber}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };

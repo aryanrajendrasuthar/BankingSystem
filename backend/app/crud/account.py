@@ -160,6 +160,19 @@ def transfer(
         raise
 
 
+def close_account(db: Session, account_id: int, user_id: int) -> Account:
+    account = _require_account_owned(db, account_id, user_id)
+    if account.balance != Decimal("0.00"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Balance must be zero to close account. Current balance: {account.balance}",
+        )
+    account.is_active = False
+    db.commit()
+    db.refresh(account)
+    return account
+
+
 def get_transactions(
     db: Session,
     account_id: int,

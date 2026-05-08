@@ -1,11 +1,15 @@
+import csv
+import io
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_db
 from app.crud.account import (
+    close_account,
     create_account,
     deposit,
     get_account,
@@ -41,10 +45,12 @@ def create_new_account(
 ):
     existing = get_user_accounts(db, current_user.id)
     same_type = [a for a in existing if a.account_type == data.account_type]
-    if len(same_type) >= 3:
+    limits = {"checking": 1, "savings": 2}
+    max_allowed = limits.get(data.account_type.value, 1)
+    if len(same_type) >= max_allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum 3 {data.account_type.value} accounts allowed",
+            detail=f"Maximum {max_allowed} {data.account_type.value} account{'s' if max_allowed > 1 else ''} allowed. Close an existing one to open a new one.",
         )
     return create_account(db, current_user.id, data)
 
@@ -154,3 +160,53 @@ def list_transactions(
         date_to=date_to,
     )
     return TransactionPage(total=total, page=page, page_size=page_size, items=items)
+
+
+@router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("10/minute")
+def close_account_endpoint(
+    request: Request,
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    close_account(db, account_id, current_user.id)
+
+
+@router.get("/{account_id}/statement")
+@limiter.limit("10/minute")
+def download_statement(
+    request: Request,
+    account_id: int,
+    date_from: datetime | None = Query(default=None),
+    date_to: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.user import UserRole
+    account = get_account(db, account_id)
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if current_user.role != UserRole.admin and account.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your account")
+
+    _, transactions = get_transactions(db, account_id, page=1, page_size=10000, date_from=date_from, date_to=date_to)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Type", "Amount", "Balance After", "Description"])
+    for txn in reversed(transactions):
+        writer.writerow([
+            txn.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            txn.transaction_type.value,
+            str(txn.amount),
+            str(txn.balance_after),
+            txn.description or "",
+        ])
+
+    filename = f"statement_{account.account_number}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
