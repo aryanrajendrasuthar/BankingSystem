@@ -1,5 +1,7 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_admin, get_current_user
 from app.core.database import get_db
@@ -26,10 +28,13 @@ from app.schemas.account import (
 )
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 def create_new_account(
+    request: Request,
     data: AccountCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -45,7 +50,9 @@ def create_new_account(
 
 
 @router.get("/", response_model=list[AccountOut])
+@limiter.limit("30/minute")
 def list_my_accounts(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -53,7 +60,9 @@ def list_my_accounts(
 
 
 @router.get("/all", response_model=list[AccountOut])
+@limiter.limit("30/minute")
 def list_all_accounts(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -63,7 +72,9 @@ def list_all_accounts(
 
 
 @router.get("/{account_id}", response_model=AccountOut)
+@limiter.limit("30/minute")
 def get_account_detail(
+    request: Request,
     account_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -78,7 +89,9 @@ def get_account_detail(
 
 
 @router.post("/{account_id}/deposit", response_model=TransactionOut)
+@limiter.limit("20/minute")
 def deposit_funds(
+    request: Request,
     account_id: int,
     body: DepositRequest,
     db: Session = Depends(get_db),
@@ -88,7 +101,9 @@ def deposit_funds(
 
 
 @router.post("/{account_id}/withdraw", response_model=TransactionOut)
+@limiter.limit("20/minute")
 def withdraw_funds(
+    request: Request,
     account_id: int,
     body: WithdrawRequest,
     db: Session = Depends(get_db),
@@ -98,7 +113,9 @@ def withdraw_funds(
 
 
 @router.post("/{account_id}/transfer", response_model=TransactionOut)
+@limiter.limit("20/minute")
 def transfer_funds(
+    request: Request,
     account_id: int,
     body: TransferRequest,
     db: Session = Depends(get_db),
@@ -109,7 +126,9 @@ def transfer_funds(
 
 
 @router.get("/{account_id}/transactions", response_model=TransactionPage)
+@limiter.limit("30/minute")
 def list_transactions(
+    request: Request,
     account_id: int,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
