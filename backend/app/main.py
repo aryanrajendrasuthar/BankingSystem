@@ -1,0 +1,25 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import auth, users
+
+app = FastAPI(
+    title="Banking System API",
+    description="A secure banking system with accounts, deposits, withdrawals, and transfers.",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth.router)
+app.include_router(users.router)
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
