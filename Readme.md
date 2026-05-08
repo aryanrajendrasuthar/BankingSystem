@@ -193,7 +193,7 @@ Create a new account. Rate limit: 10/min.
 }
 ```
 
-`account_type`: `"checking"` or `"savings"`. Maximum 3 accounts per type.
+`account_type`: `"checking"` or `"savings"`. Limits: **1 checking**, **2 savings** per user. Close an existing account to open a new one of the same type.
 
 **Response `201`:**
 ```json
@@ -203,7 +203,6 @@ Create a new account. Rate limit: 10/min.
   "account_type": "checking",
   "balance": "0.00",
   "is_active": true,
-  "owner_id": 1,
   "created_at": "2024-01-01T00:00:00"
 }
 ```
@@ -269,6 +268,22 @@ Returns the outgoing transaction. Transfer is atomic — both balance updates co
 
 ---
 
+#### DELETE /accounts/{account_id}
+Close (deactivate) an account. Rate limit: 10/min. Returns `204 No Content`.
+
+The account balance must be exactly **$0.00** before closing. Withdraw or transfer all funds first. Closed accounts are hidden from listings and cannot receive deposits or transfers.
+
+---
+
+#### GET /accounts/{account_id}/statement
+Download full transaction history as a CSV file. Rate limit: 10/min.
+
+**Query params:** `date_from`, `date_to` (ISO 8601, optional)
+
+**Response:** `text/csv` file download with columns: Date, Type, Amount, Balance After, Description.
+
+---
+
 #### GET /accounts/{account_id}/transactions
 Paginated transaction history. Rate limit: 30/min.
 
@@ -308,10 +323,37 @@ Paginated transaction history. Rate limit: 30/min.
 ### Users
 
 #### GET /users/me
-Get the current authenticated user.
+Get the current authenticated user. Rate limit: 30/min.
+
+#### PATCH /users/me
+Update display name. Rate limit: 20/min.
+
+**Request body:**
+```json
+{ "full_name": "Jane Smith" }
+```
+
+**Response `200`:** Updated user object.
+
+---
+
+#### POST /users/me/password
+Change password. Rate limit: 10/min. Returns `204 No Content`.
+
+**Request body:**
+```json
+{
+  "current_password": "oldpassword",
+  "new_password": "newpassword123"
+}
+```
+
+Returns `400` if `current_password` is incorrect. `new_password` must be ≥ 8 characters.
+
+---
 
 #### GET /users/ *(admin only)*
-List all users. Query params: `skip`, `limit`.
+List all users. Query params: `skip`, `limit`. Rate limit: 30/min.
 
 ---
 
@@ -322,10 +364,14 @@ List all users. Query params: `skip`, `limit`.
 | POST /auth/register    | 10 / min   |
 | POST /auth/login       | 10 / min   |
 | POST /auth/refresh     | 20 / min   |
-| POST /accounts/ (create) | 10 / min |
-| GET endpoints          | 30 / min   |
-| Deposit / Withdraw / Transfer | 20 / min |
-| Global default         | 200 / min  |
+| POST /accounts/ (create)        | 10 / min   |
+| DELETE /accounts/{id}           | 10 / min   |
+| GET /accounts/{id}/statement    | 10 / min   |
+| Deposit / Withdraw / Transfer   | 20 / min   |
+| PATCH /users/me                 | 20 / min   |
+| POST /users/me/password         | 10 / min   |
+| GET endpoints                   | 30 / min   |
+| Global default                  | 200 / min  |
 
 Exceeding a limit returns `HTTP 429 Too Many Requests`.
 
